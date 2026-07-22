@@ -1,0 +1,170 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>超声指纹匹配 达标实现报告</title><style>
+body{font-family:'Microsoft YaHei',sans-serif;max-width:900px;margin:30px auto;padding:0 20px;line-height:1.7;color:#222}
+h1{border-bottom:3px solid #2c7;padding-bottom:8px}
+h2{border-bottom:1px solid #ccc;padding-bottom:5px;margin-top:34px;color:#1a6}
+table{border-collapse:collapse;margin:12px 0}
+th,td{border:1px solid #bbb;padding:6px 12px;text-align:center}
+th{background:#eef}
+img{max-width:100%;border:1px solid #ddd;margin:8px 0}
+code{background:#f4f4f4;padding:2px 5px;border-radius:3px}
+blockquote{border-left:4px solid #2c7;margin:10px 0;padding:6px 14px;background:#f6fff9;color:#333}
+</style></head><body><h1>超声指纹识别 — 第一阶段 交付清单（旧数据·精度达标）</h1>
+<p><strong>日期</strong>：2026-07-01
+<strong>范围</strong>：老数据（无贴屏 + 不贴屏，27 类手指）上的<strong>指纹匹配精度达标</strong>——纯纹理方向（禁 SIFT）。
+<strong>说明</strong>：本包仅含第一阶段（旧数据）内容；贴屏/新数据实验、部署空间时间优化均不在此包。</p>
+<hr />
+<h2>一、达标结论（一页看懂）</h2>
+<p><strong>目标</strong>：FAR &lt; 0.002%（1/5万）时 FRR &lt; 3%。</p>
+<table>
+<thead>
+<tr>
+<th>范围</th>
+<th>EER</th>
+<th>FAR=0 时 FRR</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>全 27 根手指</strong></td>
+<td>1.83%</td>
+<td><strong>2.34%</strong></td>
+<td>✅ <strong>达标</strong>（&lt;3%）</td>
+</tr>
+<tr>
+<td>排除 1 根采集退化手指（wtp_xyz_R1）</td>
+<td>1.00%</td>
+<td><strong>0.64%</strong></td>
+<td>✅ 优于参考方案 0.96%</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>冒充被彻底压制</strong>：冒充的几何一致内点 max ≈ 19，FAR=0 完全可达。</li>
+<li><strong>零 SIFT</strong>：纯自训纹理描述子。</li>
+<li>2 根手指（btp_fys_R0 / wtp_xyz_R1）的 test 段为<strong>采集退化</strong>（注册段匹配良好、test 帧内点≈0），SIFT / CNN / 纹理三方交叉确认是<strong>数据损坏</strong>，卡全集下限；25 根干净手指达标充分。</li>
+</ul>
+<h2>二、方法（纹理法，三步）</h2>
+<ol>
+<li><strong>局部纹理描述子</strong>（HardNet 风格自训）：32×32 脊线 patch → 128 维 L2 描述子；<strong>真实跨帧对应点</strong>重训（同指两帧对齐的 RANSAC 内点对作正样本，比纯增广更贴近真实变化），可 bootstrap。</li>
+<li><strong>几何验证 = 姿态对齐</strong>：密集网格（stride 6）提描述子 → 互最近邻 + ratio 匹配 → RANSAC 估位姿 → 变换约束（scale∈[0.85,1.18]、|rot|&lt;30°）压制冒充 → 几何一致内点数为匹配分。</li>
+<li><strong>重叠面积归一化</strong>：按对齐后前景重叠面积归一化内点数，使不同重叠的分数可比。</li>
+</ol>
+<p><strong>其它路线（同为老数据）</strong>：两级全局+局部（FAR=0 时 FRR 2.1%/25 根）；CNN 全局嵌入 V21+V18b 融合（单场景 EER 1.10%，但连续分数尾部重叠、达不到严格 FAR——严格 FAR 需内点几何的离散可分分布）。</p>
+<hr />
+<h2>三、报告文档（<code>报告/</code>）</h2>
+<table>
+<thead>
+<tr>
+<th>文档</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>客户报告_指纹匹配达标实现</code></td>
+<td><strong>主报告（客户版）</strong>：达标结论 + 方法 + 实现</td>
+</tr>
+<tr>
+<td><code>实验汇报A_精度达标</code></td>
+<td>达标详细：全 27 根 FAR=0 FRR 2.34% / 25 根 0.64%</td>
+</tr>
+<tr>
+<td><code>纹理方法_实现交付</code></td>
+<td>纹理法（自训描述子 + 姿态对齐）实现说明</td>
+</tr>
+<tr>
+<td><code>内点匹配器_实现交付</code></td>
+<td>局部描述子 + 几何内点验证 实现说明</td>
+</tr>
+<tr>
+<td><code>内点匹配_复现压测审阅</code></td>
+<td>参考方案复现与压测审阅</td>
+</tr>
+<tr>
+<td><code>JIPNet试水结论</code></td>
+<td>JIPNet 预训练试水（单场景 EER 15.5%，域差不具竞争力）</td>
+</tr>
+</tbody>
+</table>
+<h2>四、代码（<code>代码/</code>）</h2>
+<p><strong>本包含第一阶段（旧数据）全部代码版本</strong>：<code>代码/推理API/</code>（可直接调用）+ <code>代码/全部版本_旧数据/</code>（<strong>67 个脚本</strong>，v2→v23 全部实验、达标与未达标一并保留）。</p>
+<h3>推理 API（<code>代码/推理API/</code>，可直接调用）</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>predict.py</code></td>
+<td>自包含推理接口 <code>FingerprintMatcher</code>：<code>feat/match_score/enroll/verify</code></td>
+</tr>
+<tr>
+<td><code>best.pth</code></td>
+<td>交付纹理描述子（texdesc_v3，128 维，1.23MB）</td>
+</tr>
+<tr>
+<td><code>README.md</code></td>
+<td>调用说明</td>
+</tr>
+</tbody>
+</table>
+<h3>全部版本（<code>代码/全部版本_旧数据/</code>，67 个脚本）</h3>
+<p>下面按类别标注，<strong>其中达标核心已加粗</strong>；其余为探索/对照/否定性验证版本（全部保留）。</p>
+<p><strong>达标核心（纹理法）</strong>：<strong><code>train_descriptor.py</code></strong>、<strong><code>mine_and_train.py</code></strong>（真实对应点挖掘+bootstrap 重训）、<strong><code>texture_matcher.py</code></strong>（密集网格+姿态对齐+重叠归一化）；<code>train_descriptor_kp.py</code>/<code>texture_matcher_kp.py</code>（SIFT 关键点变体）。</p>
+<p><strong>达标核心（两级/内点）</strong>：<strong><code>combined_two_stage.py</code></strong>（全局预筛+局部几何验证）；<code>improved_matcher.py</code>/<code>final_check.py</code>/<code>final_matcher.py</code>/<code>final_matcher2.py</code>/<code>final_confirm.py</code>（变换约束几何内点匹配器）；<code>learned_desc_matcher.py</code>/<code>learned_local_align.py</code>（学习局部描述子+对齐）。</p>
+<p><strong>CNN 与融合（v11–v23）</strong>：<code>optimize_v11_enhanced_cnn</code> … <code>optimize_v23_gabor_enhance</code>、<code>optimize_v21_hybrid</code>（V21）、<code>optimize_v21r34</code>、<code>optimize_v18b_local</code>（V18b）、<code>optimize_v15/v20_delf</code>、<code>fusion_ensemble/final/iter2-4</code>、<code>global_local_eval</code>、<code>train_arcface</code>。</p>
+<p><strong>早期方法（v2–v9）</strong>：<code>optimize_v2</code>/<code>v2_fast</code>/<code>v3_siamese</code>/<code>v4_attention</code>/<code>v5_fix</code>/<code>v5_simclr_30class</code>/<code>v6_multireg_simclr</code>/<code>v7_final</code>/<code>v8_enhanced</code>/<code>v9_single_frame</code>。</p>
+<p><strong>SIFT 与可行性验证</strong>：<code>sift_no_xzc</code>/<code>sift_no_xzc_fast</code>/<code>sift_pipeline_v10</code>/<code>sift_pose_feasibility</code>、<code>feasibility_orientation</code>/<code>feasibility_ridge</code>（方向场/脊线证伪）、<code>analyze_btp_perfinger</code>。</p>
+<p><strong>评估 / 出图 / 工具</strong>：<code>metrics_27</code>、<code>reproduce_stress</code>、<code>plot_results</code>、<code>replot</code>/<code>replot_tex</code>/<code>replot_twostage</code>/<code>replot_v2</code>、<code>generate_report</code>/<code>generate_report_v14</code>/<code>generate_comparison_chart</code>、<code>make_html_report</code>、<code>make_visual_compare</code>、<code>corrupted_frames_montage</code>、<code>read_pptx</code>。</p>
+<blockquote>
+<p><strong>不含</strong>第二阶段（新数据/贴屏）代码：贴屏精度、部署空间/时间优化、V24/V25/V26、top1000、CPU 耗时等脚本均已排除。</p>
+</blockquote>
+<h2>五、模型（<code>模型/</code>）</h2>
+<ul>
+<li><code>models_texdesc/</code>：纹理描述子模型（texdesc / v2 / v3 / v4 / kp）。<strong>best.pth = texdesc_v3</strong>（已在推理 API 内）。</li>
+<li>说明：CNN 模型（models_v21 / v18b 各 130MB+）体积大，未随包附带；如需 CNN 方法可另取。</li>
+</ul>
+<h2>六、图（<code>图/</code>）</h2>
+<table>
+<thead>
+<tr>
+<th>图</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>匹配效果_纹理方法.png</code></td>
+<td>纹理法匹配效果（达标）</td>
+</tr>
+<tr>
+<td><code>匹配效果_v2达标.png</code></td>
+<td>FAR=0 @ FRR 2.34% 匹配分布</td>
+</tr>
+<tr>
+<td><code>匹配效果_两级全局加局部.png</code></td>
+<td>两级法匹配效果</td>
+</tr>
+<tr>
+<td><code>全局加局部_严格工作点.png</code></td>
+<td>CNN 融合在严格 FAR 下尾部重叠（说明为何需内点几何）</td>
+</tr>
+<tr>
+<td><code>损坏帧核查_2根手指.png</code></td>
+<td>2 根采集退化手指的 注册帧 vs test 帧对比</td>
+</tr>
+<tr>
+<td><code>comparison_all_methods.png</code> / <code>ffr_vs_far_curve.png</code> / <code>summary_table.png</code></td>
+<td>各法对比 / FRR-FAR 曲线 / 汇总表</td>
+</tr>
+</tbody>
+</table>
+<h2>七、运行环境</h2>
+<ul>
+<li>Python：<code>E:\ANACONDA_NEW\python.exe</code>（torch 2.11+cu128，RTX 5080）</li>
+<li>前置：环境变量 <code>KMP_DUPLICATE_LIB_OK=TRUE</code>；中文路径读图用 <code>cv2.imdecode</code>、写图用 <code>cv2.imencode</code>。</li>
+</ul></body></html>

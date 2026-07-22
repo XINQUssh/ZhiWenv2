@@ -1,0 +1,215 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>超声指纹匹配 达标实现报告</title><style>
+body{font-family:'Microsoft YaHei',sans-serif;max-width:900px;margin:30px auto;padding:0 20px;line-height:1.7;color:#222}
+h1{border-bottom:3px solid #2c7;padding-bottom:8px}
+h2{border-bottom:1px solid #ccc;padding-bottom:5px;margin-top:34px;color:#1a6}
+table{border-collapse:collapse;margin:12px 0}
+th,td{border:1px solid #bbb;padding:6px 12px;text-align:center}
+th{background:#eef}
+img{max-width:100%;border:1px solid #ddd;margin:8px 0}
+code{background:#f4f4f4;padding:2px 5px;border-radius:3px}
+blockquote{border-left:4px solid #2c7;margin:10px 0;padding:6px 14px;background:#f6fff9;color:#333}
+</style></head><body><h1>超声指纹识别 — 贴屏阶段 交付清单（精度评估）</h1>
+<p><strong>日期</strong>：2026-07-01
+<strong>本阶段范围</strong>：贴屏数据（select = ysjz 再采集）<strong>精度测试与诊断</strong>
+<strong>说明</strong>：部署空间/时间优化属<strong>下一阶段</strong>内容，不在本次交付范围。</p>
+<hr />
+<h2>一、本阶段结论摘要（一页看懂）</h2>
+<table>
+<thead>
+<tr>
+<th>项目</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>贴屏精度</strong></td>
+<td>❌ 未达标：纹理法 EER 17–20%、CNN 法 12–16%；严格 FAR&lt;1/5W 时 FRR ≥54%（目标 &lt;3%）</td>
+</tr>
+<tr>
+<td><strong>根因</strong></td>
+<td>贴屏小面积超声 + 跨场景再采集 → 同指帧间<strong>重叠低</strong>、噪声大；纹理法/CNN 两大类殊途同归，<strong>是数据侧问题，非算法选择</strong></td>
+</tr>
+<tr>
+<td><strong>top1000 质量筛选</strong></td>
+<td>原图略优于降噪，但仍不达标（FAR=0 FRR 58%）；<strong>降噪有害，用原图</strong></td>
+</tr>
+<tr>
+<td><strong>模板数量</strong></td>
+<td>实测<strong>越多越好</strong>（K=20 最优），不能减</td>
+</tr>
+<tr>
+<td><strong>旧数据(单场景)参考</strong></td>
+<td>已达标：FAR=0 时 FRR 2.34%（全 27 指）/ 0.64%（25 指）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>后续待客户拍板</strong>：① 严格 FAR&lt;1/5W 是否可放宽；② 能否提供更多贴屏跨场景配对数据用于正式重训。</p>
+<hr />
+<h2>二、报告文档（<code>报告/</code>）</h2>
+<table>
+<thead>
+<tr>
+<th>文档</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>实验汇报_贴屏精度测试与诊断</code></td>
+<td><strong>主报告</strong>：贴屏各法精度 + top1000 重测 + 模板数量 + 根因诊断 + 方法要点 + 建议</td>
+</tr>
+<tr>
+<td><code>实验汇报A_精度达标</code>（参考）</td>
+<td>旧数据（单场景）达标：FAR=0 FRR 2.34%</td>
+</tr>
+<tr>
+<td><code>客户报告_指纹匹配达标实现</code>（参考）</td>
+<td>旧数据达标方法与实现（客户版）</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>HTML 为自包含单文件（图已内嵌），双击即可看；同名 .md 为源。</p>
+</blockquote>
+<h2>三、代码（<code>代码/</code>）</h2>
+<h3>推理 API（可直接调用）</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>predict.py</code></td>
+<td>自包含推理接口 <code>FingerprintMatcher</code>：<code>feat/match_score/enroll/verify</code>，加载 best.pth</td>
+</tr>
+<tr>
+<td><code>best.pth</code></td>
+<td>交付纹理描述子（texdesc_v3，128 维，1.23MB）</td>
+</tr>
+<tr>
+<td><code>README.md</code></td>
+<td>调用说明</td>
+</tr>
+</tbody>
+</table>
+<h3>精度评估</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>select_eval.py</code></td>
+<td>贴屏 select 全匹配精度（纹理法 + 重叠归一化）</td>
+</tr>
+<tr>
+<td><code>full_eval.py</code></td>
+<td>统一全匹配评估（可配模型/stride，双打分：raw 内点 + 重叠归一化）</td>
+</tr>
+<tr>
+<td><code>global_local_select.py</code></td>
+<td>CNN 全局+局部法（V21/V25a）在贴屏上的精度对照</td>
+</tr>
+<tr>
+<td><code>top1000_eval.py</code></td>
+<td>质量筛选 top1000（降噪 vs 原图）FRR/FAR 重测</td>
+</tr>
+<tr>
+<td><code>tmpl_sweep.py</code></td>
+<td>模板数 K=3/5/10/20 对 FRR/FAR 的影响</td>
+</tr>
+</tbody>
+</table>
+<h3>训练 / 诊断 / 示意</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mine_and_train_screen.py</code></td>
+<td>贴屏域适配（真实对应点挖掘 + warm-start 重训描述子）</td>
+</tr>
+<tr>
+<td><code>diag_split_pairs.py</code></td>
+<td>诊断：时序 vs 随机 split、最高 impostor 指对</td>
+</tr>
+<tr>
+<td><code>diag_domain.py</code></td>
+<td>域差诊断图（贴屏 vs 老数据 原图/前景/归一化）</td>
+</tr>
+<tr>
+<td><code>viz_corr_overlap.py</code></td>
+<td>「真实对应点 + 重叠区」方法示意图</td>
+</tr>
+</tbody>
+</table>
+<h3>出图 / 工具</h3>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>plot_accuracy.py</code></td>
+<td>贴屏精度汇总图（各方法 EER + 模板数）</td>
+</tr>
+<tr>
+<td><code>make_html_report.py</code></td>
+<td>md → 自包含 HTML（图 base64 内嵌）</td>
+</tr>
+</tbody>
+</table>
+<h2>四、图（<code>图/</code>）</h2>
+<table>
+<thead>
+<tr>
+<th>图</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>贴屏精度_汇总.png</code></td>
+<td>左=各方法精度，右=模板数 vs 精度</td>
+</tr>
+<tr>
+<td><code>对应点与重叠区_示意.png</code></td>
+<td>方法示意：真实对应点重训 + 重叠区求法</td>
+</tr>
+<tr>
+<td><code>域差诊断_贴屏vs老.png</code></td>
+<td>贴屏 vs 老数据 成像对比</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>五、运行环境</h2>
+<ul>
+<li>Python：<code>E:\ANACONDA_NEW\python.exe</code>（torch 2.11+cu128，RTX 5080）</li>
+<li>运行前置：环境变量 <code>KMP_DUPLICATE_LIB_OK=TRUE</code></li>
+<li>中文路径读图用 <code>cv2.imdecode</code>、写图用 <code>cv2.imencode</code></li>
+</ul>
+<h2>六、方法要点（两条核心设计）</h2>
+<ol>
+<li><strong>真实对应点重训</strong>：同指两帧对齐 → RANSAC 内点对 = 同一物理脊线点的对应位置 → 取 32×32 patch 作正样本对重训（比纯增广更贴近真实跨帧变化）。</li>
+<li><strong>重叠面积归一化</strong>：A 前景按位姿 warp 到 B ∩ B 前景 = 重叠面积；分数 = 内点数 × √(20000/重叠面积)。</li>
+</ol>
+<h2>七、后续（贴屏数据方向，待与客户确认）</h2>
+<ul>
+<li><strong>数据侧</strong>（主要杠杆）：用原图不用降噪；采集引导提高帧间重叠；多采跨场景配对。</li>
+<li><strong>算法侧</strong>：贴屏正式重训（非微调）更强描述子；收紧几何验证压制冒充尾巴。</li>
+</ul></body></html>

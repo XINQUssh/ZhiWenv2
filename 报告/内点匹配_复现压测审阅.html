@@ -1,0 +1,133 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>超声指纹匹配 达标实现报告</title><style>
+body{font-family:'Microsoft YaHei',sans-serif;max-width:900px;margin:30px auto;padding:0 20px;line-height:1.7;color:#222}
+h1{border-bottom:3px solid #2c7;padding-bottom:8px}
+h2{border-bottom:1px solid #ccc;padding-bottom:5px;margin-top:34px;color:#1a6}
+table{border-collapse:collapse;margin:12px 0}
+th,td{border:1px solid #bbb;padding:6px 12px;text-align:center}
+th{background:#eef}
+img{max-width:100%;border:1px solid #ddd;margin:8px 0}
+code{background:#f4f4f4;padding:2px 5px;border-radius:3px}
+blockquote{border-left:4px solid #2c7;margin:10px 0;padding:6px 14px;background:#f6fff9;color:#333}
+</style></head><body><h1>内点匹配方法 复现 + 鲁棒性压测 审阅报告</h1>
+<p>日期: 2026-06-18
+对象: 客户提供的"局部描述子 + 几何内点验证"匹配结果(FAR=0 @ FRR=0.96%, 单场景)
+做法: 用 SIFT + 几何验证(RANSAC, 内点数=分数)复现并压测; 老数据27类, 813探针, 21138冒充对。</p>
+<hr />
+<h2>1. 复现情况 — 方法可信, 且客户训练描述子有真实价值</h2>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>本次SIFT复现</th>
+<th>客户结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>genuine 内点均值</td>
+<td>108</td>
+<td>~110 ✅</td>
+</tr>
+<tr>
+<td>impostor 内点 max</td>
+<td>48 (21138对)</td>
+<td>~31 (69687对)</td>
+</tr>
+<tr>
+<td>FAR=0 工作点</td>
+<td>thr=49 → FRR=20.4%</td>
+<td>thr=32 → FRR=0.96%</td>
+</tr>
+<tr>
+<td>EER</td>
+<td>3.0%</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong>genuine 分布复现一致</strong>(108≈110), 证明方法的真实匹配行为可信。</li>
+<li><strong>客户的"训练局部描述子"明显强于现成SIFT</strong>: 在更多对(7万 vs 2万)上把 impostor 尾巴压到 31(我SIFT到48), 且 genuine 下限更高。<strong>这是他们方法的真实价值, 不是SIFT随手可达。</strong></li>
+</ul>
+<h2>2. 压测A: 阈值跨手指泛化 (核心发现)</h2>
+<p>标定组手指上选 FAR=0 阈值 → 未见测试组手指上测真实 FAR (3次随机劈分):</p>
+<table>
+<thead>
+<tr>
+<th>试验</th>
+<th>标定FAR=0阈值</th>
+<th>未见手指真实FAR</th>
+<th>FRR</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>37</td>
+<td>0.018%</td>
+<td>8.8%</td>
+</tr>
+<tr>
+<td>2</td>
+<td>33</td>
+<td><strong>0.146%</strong></td>
+<td>13.3%</td>
+</tr>
+<tr>
+<td>3</td>
+<td>35</td>
+<td>0.055%</td>
+<td>13.3%</td>
+</tr>
+</tbody>
+</table>
+<p><strong>"FAR=0" 是 in-sample(在测试集上选阈值)的乐观值。换没见过的攻击手指, 真实 FAR ≈ 0.02~0.15%, 非0。</strong> 对目标 FAR&lt;0.002%, 超 10~70 倍。</p>
+<blockquote>
+<p>注: 这是用SIFT压测; 客户训练描述子的尾巴更薄, 其out-of-sample FAR可能优于此, 但<strong>必须用held-out手指实测才能支撑1/50000声明</strong>。</p>
+</blockquote>
+<h2>3. 压测B: 冒充内点尾巴随样本量</h2>
+<table>
+<thead>
+<tr>
+<th>冒充对数</th>
+<th>内点max</th>
+<th>p99.99</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1000</td>
+<td>39</td>
+<td>37.7</td>
+</tr>
+<tr>
+<td>5000</td>
+<td>35</td>
+<td>33.5</td>
+</tr>
+<tr>
+<td>10000</td>
+<td>48</td>
+<td>48</td>
+</tr>
+<tr>
+<td>21138</td>
+<td>48</td>
+<td>38.9</td>
+</tr>
+</tbody>
+</table>
+<p>尾巴随样本量增长; 客户余量仅1(impostor max31→阈值32)。外推1/50000量级, 尾巴更肥, 固定阈值真实FAR高于in-sample估计。</p>
+<h2>4. 被拒genuine归因 (FRR来源)</h2>
+<p>被拒genuine主要是<strong>已知固有低质量手指</strong>: btp_fys_R0(28/30)、btp_ssh_R0/R1/R2、wtp_gjw_R0、wtp_xyz_R2、wtp_dy_R0 — 与历史分析的最差手指吻合。采集端质量门可进一步降FRR。</p>
+<hr />
+<h2>5. 审阅结论与建议</h2>
+<p><strong>方法正确、强、是达成项目原始目标(FAR&lt;0.002%@FFR&lt;3%)的正确路径</strong>, 远优于全局嵌入在该工作点的表现。客户的训练描述子确有价值。但:</p>
+<ol>
+<li><strong>"FAR=0"应表述为"标定集上FAR=0"</strong>。要支撑1/50000的工程声明, 必须做 <strong>held-out手指/disjoint冒充集</strong> 验证, 报告out-of-sample FAR(预计落在~0.02-0.15%量级, 仍接近目标但非0)。</li>
+<li><strong>阈值余量薄</strong>(impostor max到阈值差1), 是主要风险点; 建议在更大、不相交的冒充集上确认尾巴, 并适当留余量(牺牲一点FRR换FAR鲁棒)。</li>
+<li><strong>FRR由少数坏手指主导</strong>, 采集端加质量门(帧间一致性/覆盖度/内点自匹配下限)可同时降FRR。</li>
+<li><strong>单场景专属</strong>: 本方法跨场景会崩(SIFT跨场景genuine内点≈0), 仅适用同场景注册-验证部署。</li>
+<li>可选: 全局嵌入(V21+V18b, EER1.1%)做<strong>快速预筛</strong> + 内点几何做<strong>精验</strong>, 两级流水兼顾速度与FAR鲁棒。</li>
+</ol>
+<p>复现/压测脚本: <code>reproduce_stress.py</code>。</p></body></html>
